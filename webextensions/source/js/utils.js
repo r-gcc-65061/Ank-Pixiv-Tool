@@ -22,7 +22,7 @@
    */
   let trackbackParentNode = (node, n, targetClass) => {
     if (n < 0) {
-      return node.firstChild;
+      return targetClass && node.getElementsByClassName(targetClass)[0] || node.firstChild;
     }
 
     for (let i=0; i<n && node; i++, node = node.parentNode) {
@@ -72,6 +72,18 @@
    */
   let trim = (str) => {
     return str && str.replace(/^\s*|\s*$/g, '');
+  };
+
+  /**
+   * br を改行として認識する textContent
+   *    elem:     要素
+   *    return:   String;
+   */
+  let getTextContent = (e) => {
+    let doc = e.ownerDocument;
+    let temp = doc.createElement('div');
+    temp.innerHTML = e.innerHTML.replace(/<br\s*\/?>/ig, '\n');
+    return temp.textContent;
   };
 
   /**
@@ -227,6 +239,28 @@
     o.ymd = o.year+'/'+o.month+'/'+o.day+' '+o.hour+':'+o.minute;
 
     return o;
+  };
+
+  /**
+   * "x.x.x" 形式のバージョン番号文字列の比較
+   * @param a
+   * @param b
+   * @returns {number}
+   */
+  let compareVersion = (a, b) => {
+    a = a && a.split('.') || [];
+    b = b && b.split('.') || [];
+
+    while (a.length || b.length) {
+      let ia = parseInt(a.shift() || 0);
+      let ib = parseInt(b.shift() || 0);
+      let d = ia - ib;
+      if (d) {
+        return d;
+      }
+    }
+
+    return 0;
   };
 
   /**
@@ -495,9 +529,11 @@
     'trackbackParentNode': trackbackParentNode,
     'getScrollbarSize': getScrollbarSize,
     'trim': trim,
+    'getTextContent': getTextContent,
     'zeroPad': zeroPad,
-    'getDateData': getDateData,
     'decodeTextToDateData': decodeTextToDateData,
+    'getDateData': getDateData,
+    'compareVersion': compareVersion,
     'blobToArrayBuffer': blobToArrayBuffer,
     'blobToDataURL': blobToDataURL,
     'blobToJSON': blobToJSON,

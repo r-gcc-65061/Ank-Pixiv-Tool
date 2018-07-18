@@ -1,35 +1,22 @@
 "use strict";
 
-{
-
+class AnkTwitter extends AnkSite {
   /**
-   *
-   * @constructor
+   * コンストラクタ
    */
-  let AnkTwitter = function () {
-
-    AnkSite.apply(this, arguments);
+  constructor () {
+    super();
 
     this.SITE_ID = 'TWT';
 
-  };
-
-  /**
-   *
-   * @type {AnkSite}
-   */
-  AnkTwitter.prototype = Object.create(AnkSite.prototype, {
-    constructor: {
-      'value': AnkTwitter,
-      'enumerable': false
-    }
-  });
+    this.USE_CONTEXT_CACHE = false;
+  }
 
   /**
    * 利用するクエリのまとめ
    * @param doc
    */
-  AnkTwitter.prototype.getElements = function (doc) {
+  getElements (doc) {
 
     const SELECTOR_ITEMS = {
       "illust": {
@@ -61,16 +48,18 @@
       }
     };
 
-    let gElms = this.initSelectors({'doc': doc}, SELECTOR_ITEMS, doc);
+    let selectors = this.attachSelectorOverride({}, SELECTOR_ITEMS);
+
+    let gElms = this.initSelectors({'doc': doc}, selectors, doc);
 
     return gElms;
-  };
+  }
 
   /**
    *
    * @returns {*}
    */
-  AnkTwitter.prototype.getOpenedModal = function () {
+  getOpenedModal () {
     const KS = ['gallary', 'tweet'];
     for (let i=0; i<KS.length; i++) {
       let e = this.elements.illust[KS[i]];
@@ -78,37 +67,44 @@
         return e;
       }
     }
-  };
+  }
 
   /**
    *
    * @returns {boolean}
    */
-  AnkTwitter.prototype.inIllustPage = function () {
+  inIllustPage () {
     return !!this.getOpenedModal();
-  };
+  }
 
   /**
    * ダウンロード情報（画像パス）の取得
    * @param elm
    * @returns {Promise}
    */
-  AnkTwitter.prototype.getPathContext = async function (elm) {
+  async getPathContext (elm) {
     let getPhotoPath = async () => {
-      let m = Array.prototype.map.call(elm.illust.photos, (e) => {
-        return {'src': this.prefs.downloadOriginalSize ? e.src.replace(/(?::large)?$/, ':orig') : e.src};
+      let thumb = Array.prototype.map.call(elm.illust.photos, (e) => {
+        return {'src': e.src};
+      });
+
+      let orig = thumb.map((e) => {
+        return {'src': e.src.replace(/(?::large)?$/, ':orig')};
       });
 
       return {
-        'original': m
+        'thumbnail': thumb,
+        'original': orig
       };
     };
 
     let getVideoPath = async () => {
       let src = elm.illust.video.src;
       if (/^https?:\/\//.test(src)) {
+        let m = [{'src': src}];
         return {
-          'original': [{'src': src}]
+          'thumbnail': m,
+          'original': m
         };
       }
 
@@ -121,14 +117,14 @@
     if (elm.illust.video) {
       return getVideoPath();
     }
-  };
+  }
 
   /**
    * ダウンロード情報（イラスト情報）の取得
    * @param elm
-   * @returns {{url: string, id, title, posted: (boolean|Number|*), postedYMD: (boolean|*), size: {width, height}, tags: *, tools: *, caption: *, R18: boolean}}
+   * @returns {Promise.<{url: (string|*), id: string, title: (*|string|XML|void), posted: (boolean|*|Number), postedYMD: (boolean|string|*), tags: Array, caption: (*|string|XML|void), R18: boolean}>}
    */
-  AnkTwitter.prototype.getIllustContext = function (elm) {
+  async getIllustContext (elm) {
     try {
       let dd = new Date(parseInt(elm.info.illust.datetime.getAttribute('data-time-ms'),10));
       let posted = this.getPosted(() => AnkUtils.getDateData(dd));
@@ -149,14 +145,14 @@
     catch (e) {
       logger.error(e);
     }
-  };
+  }
 
   /**
    * ダウンロード情報（メンバー情報）の取得
    * @param elm
-   * @returns {{id: *, pixiv_id: *, name, memoized_name: null}}
+   * @returns {Promise.<{id: string, name: string, pixiv_id: string, memoized_name: null}>}
    */
-  AnkTwitter.prototype.getMemberContext = function(elm) {
+  async getMemberContext(elm) {
     try {
       return {
         'id': elm.doc.getAttribute('data-user-id'),
@@ -168,15 +164,14 @@
     catch (e) {
       logger.error(e);
     }
-  };
+  }
 
   /**
    * ダウンロード情報をまとめる
    * @param elm
-   * @param force
    * @returns {Promise.<*>}
    */
-  AnkTwitter.prototype.getContext = async function (elm, force) {
+  async getContext (elm) {
 
     let modal = this.getOpenedModal();
     if (!modal) {
@@ -185,15 +180,15 @@
 
     let elmTweet = this.getElements(modal.tweet);
 
-    return AnkSite.prototype.getContext.call(this, elmTweet, true);
-  };
+    return super.getContext(elmTweet);
+  }
 
   /**
    *
    * @param opts
    * @returns {boolean}
    */
-  AnkTwitter.prototype.displayDownloaded = function (opts) {
+  displayDownloaded (opts) {
 
     opts = opts || {};
 
@@ -208,20 +203,20 @@
       }
     };
 
-    return AnkSite.prototype.displayDownloaded.call(this, opts);
-  };
+    return super.displayDownloaded(opts);
+  }
 
   /**
    *
    * @param opts
    * @param siteSpecs
    */
-  AnkTwitter.prototype.markDownloaded = function (opts, siteSpecs) {};
+  markDownloaded (opts, siteSpecs) {}
 
   /**
    *
    */
-  AnkTwitter.prototype.installFunctions = function () {
+  installFunctions () {
 
     //
     let displayWhenGallaryOpened = () => {
@@ -276,13 +271,13 @@
       AnkUtils.delayFunctionInstaller({'func': delayDisplaying, 'retry': this.FUNC_INST_RETRY_VALUE, 'label': 'delayDisplaying'}),
     ])
       .catch((e) => logger.warn(e));
-  };
-
-  // 開始
-
-  new AnkTwitter().start()
-    .catch((e) => {
-      console.error(e);
-    });
+  }
 
 }
+
+// 開始
+
+new AnkTwitter().start()
+  .catch((e) => {
+    console.error(e);
+  });

@@ -1,23 +1,19 @@
 "use strict";
 
-{
-
+class AnkSite {
   /**
    * コンストラクタ
-   * @constructor
    */
-  var AnkSite = function () {
-    if (this.constructor === AnkSite) {
-      throw new Error("Can't instantiate abstract class!");
-    }
-
+  constructor () {
     this.SITE_ID = null;
     this.ALT_SITE_ID = null;
+
+    this.USE_CONTEXT_CACHE = true;
 
     this.prefs = null;
 
     this.elements = null;
-    this.collectedContext = null;
+    this.contextCache = null;
 
     this.executed = {
       'displayDownloaded': false,
@@ -29,13 +25,13 @@
       'max': 30,
       'wait': 1000
     };
-
-  };
+  }
 
   /**
    * 初期化
+   * @returns {Promise}
    */
-  AnkSite.prototype.start = function () {
+  start () {
 
     let applyPrefsChange = () => {
       let applySitePrefs = (global, local) => {
@@ -72,6 +68,18 @@
         return;
       }
 
+      if (Object.keys(this.prefs.site._mod_selector).length) {
+        let selector_overrode = this.prefs.selector_overrode || "3.0.0";
+        if (AnkUtils.compareVersion(this.prefs.version, selector_overrode) > 0) {
+          // 過去のバージョンでインポートしたセレクタ上書き設定は無視する
+          logger.info("IGNORE override_selector:", selector_overrode);
+          this.prefs.site._mod_selector = {};
+        }
+        else {
+          logger.info("USE override_selector:", selector_overrode);
+        }
+      }
+
       logger.info('SITE MODULE INSTALLED:', this.SITE_ID, document.location.href);
 
       AnkPrefs.setAutoApply(() => applyPrefsChange());
@@ -83,20 +91,37 @@
       this.initFocusListener();
       this.installFunctions();
     })();
-  };
+  }
+
+  /**
+   * 再初期化
+   */
+  restart () {
+    logger.info('RESET CONTEXT INFO:', this.SITE_ID, document.location.href);
+
+    AnkViewer.reset();
+
+    this.elements = this.getElements(document);
+    this.contextCache = null;
+
+    this.executed = {
+      'displayDownloaded': false,
+      'markDownloaded': false
+    };
+    this.marked = 0;
+  }
 
   /**
    * focusイベントリスナーの定義
    */
-  AnkSite.prototype.initFocusListener = function () {
+  initFocusListener () {
     window.addEventListener('focus', () => this.onFocusHandler())
-  };
+  }
 
   /**
    * メッセージリスナーの定義
    */
-  AnkSite.prototype.initMessageListener = function () {
-
+  initMessageListener () {
     let execMessage = (message, sender) => {
       switch (message.type) {
         case 'AnkPixiv.Download':
@@ -138,12 +163,13 @@
       sendResponse();
       return false;
     });
-  };
+  }
 
   /**
    * ダウンロードの実行
+   * @param dw
    */
-  AnkSite.prototype.executeDownload = function (dw) {
+  executeDownload (dw) {
 
     // ファイル名定義を実際のファイル名に変換する
     let getFileName = (info) => {
@@ -178,14 +204,24 @@
         ].reduce((s, v) => {
           try {
             // TODO dir//file みたいな感じで File Separator が複数連続していると FILE_NAME_TOO_LONG 例外が発生するので注意。あと .. もNG
-            return s.replace(v.re, AnkUtils.fixFilename((v.val || '-')).toString());
+            return s.replace(v.re, AnkUtils.fixFilename((v.val && v.val.toString() || '-')).toString());
           }
           catch (e) {
-            logger.warn(v.re + ' is not found');
+            logger.warn(v.re.toString(), 'is not found:', e.toString());
           }
           return s;
         }, this.prefs.defaultFilename);
       })(info.context);
+
+      //  . で始まるファイル名 or フォルダ名が含まれていると invalid filename になる (#160)
+      name = name.replace(/^\./, '_');
+      name = name.replace(/([/\\])\./g, '$1_');
+
+      // ファイル名の長さの調整 (#165)
+      if (IS_FIREFOX && IS_WINDOWS) {
+        let basename = name.replace(/^.*[\\\/]/, '');
+        name = name.slice(0, -basename.length) + basename.slice(0, this.prefs.maxFilenameLength);
+      }
 
       if (!this.prefs.overwriteExistingDownload && info.age > 1) {
         // ２回目の保存からは世代情報を付加（windows風に(1)から）
@@ -315,7 +351,7 @@
     }
 
     // サムネ画像かオリジナル画像かの選択
-    let path = this.prefs.downloadOriginalSize && dw.context.path.original || dw.context.path.thumbnail || dw.context.path.original;
+    let path = this.prefs.downloadOriginalSize && dw.context.path.original || dw.context.path.thumbnail;
 
     // 保存世代
     let age = dw.status ? dw.status.age+1 : 1;
@@ -340,13 +376,13 @@
       .catch((e) => {
         logger.error('download error:', e);
       });
-  };
+  }
 
   /**
    * backgroundにサイトの最終更新時刻を問い合わせる
    * @returns {Promise}
    */
-  AnkSite.prototype.requestGetSiteChanged = function () {
+  requestGetSiteChanged () {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({
           'type': 'AnkPixiv.Query.getSiteChanged',
@@ -357,7 +393,7 @@
         (result) => resolve(result)
       );
     });
-  };
+  }
 
   /**
    * backgroundにユーザ情報を問い合わせる
@@ -366,7 +402,7 @@
    * @param member_name
    * @returns {Promise}
    */
-  AnkSite.prototype.requestGetMemberInfo = function (member_id, member_name) {
+  requestGetMemberInfo (member_id, member_name) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({
           'type': 'AnkPixiv.Query.getMemberInfo',
@@ -379,14 +415,15 @@
         (result) => resolve(result)
       );
     });
-  };
+  }
 
   /**
    * backgroundに作品のダウンロード状態を問い合わせる
    * @param illust_id
+   * @param ignore_cache
    * @returns {Promise}
    */
-  AnkSite.prototype.requestGetDownloadStatus = function (illust_id, ignore_cache) {
+  requestGetDownloadStatus (illust_id, ignore_cache) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({
           'type': 'AnkPixiv.Query.getDownloadStatus',
@@ -399,14 +436,14 @@
         (result) => resolve(result)
       );
     });
-  };
+  }
 
   /**
    *
-   * @param info
+   * @param hist_data
    * @returns {Promise}
    */
-  AnkSite.prototype.requestUpdateDownloadHistory = function (hist_data) {
+  requestUpdateDownloadHistory (hist_data) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({
           'type': 'AnkPixiv.Query.updateDownloadHistory',
@@ -417,14 +454,14 @@
         (result) => resolve(result)
       );
     });
-  };
+  }
 
   /**
    * backgroundにデータのファイルへの保存を依頼する
    * @param info
    * @returns {Promise}
    */
-  AnkSite.prototype.requestExecuteSaveObject = function (info) {
+  requestExecuteSaveObject (info) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({
           'type': 'AnkPixiv.Execute.saveObject',
@@ -441,14 +478,15 @@
         }
       );
     });
-  };
+  }
 
   /**
    *
-   * @param info
+   * @param targets
+   * @param hist_data
    * @returns {Promise}
    */
-  AnkSite.prototype.requestExecuteAddToDownloadQueue = function (targets, hist_data) {
+  requestExecuteAddToDownloadQueue (targets, hist_data) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({
           'type': 'AnkPixiv.Execute.addToDownloadQueue',
@@ -466,14 +504,14 @@
         }
       );
     });
-  };
+  }
 
   /**
    * 投稿日時の解析の共通部分
    * @param callback
    * @returns {*}
    */
-  AnkSite.prototype.getPosted = function (callback) {
+  getPosted (callback) {
     let posted = callback();
     if (posted.fault) {
       if (!this.prefs.ignoreWrongDatetimeFormat) {
@@ -488,20 +526,19 @@
       }
     }
     return posted;
-  };
+  }
 
   /**
    * ダウンロード情報をまとめる
    * @param elm
-   * @param force
    * @returns {Promise.<*>}
    */
-  AnkSite.prototype.getContext = async function (elm, force) {
+  async getContext (elm) {
 
-    if (!force) {
-      if (this.collectedContext && this.collectedContext.downloadable) {
+    if (this.USE_CONTEXT_CACHE) {
+      if (this.contextCache && this.contextCache.downloadable) {
         // 既にダウンロード可能な情報を取得済みならそのまま返す
-        return this.collectedContext;
+        return this.contextCache;
       }
     }
 
@@ -523,22 +560,22 @@
 
       logger.info('CONTEXT: ', context);
 
-      return this.collectedContext = context;
+      return this.contextCache = context;
     });
-  };
+  }
 
   /**
    * ダウンロードの実行
    * @param opts
    */
-  AnkSite.prototype.downloadCurrentImage = function (opts) {
+  downloadCurrentImage (opts) {
     if (!this.inIllustPage()) {
       return;
     }
 
-    this.displayDownloaded({'inProgress': true});
-
     (async () => {
+
+      await this.displayDownloaded({'inProgress': true});
 
       opts = opts || {};
 
@@ -547,7 +584,7 @@
         // コンテキストが集まらない（ダウンロード可能な状態になっていない）
         let msg = chrome.i18n.getMessage('msg_notReady');
         logger.warn(new Error(msg));
-        this.displayDownloaded({'force': true});
+        await this.displayDownloaded({'force': true});
         return;
       }
 
@@ -556,7 +593,7 @@
         let msg = chrome.i18n.getMessage('msg_cannotFindImages');
         logger.error(new Error(msg));
         alert(msg);
-        this.displayDownloaded({'force': true});
+        await this.displayDownloaded({'force': true});
         return;
       }
 
@@ -568,32 +605,35 @@
       this.executeDownload({'status': status, 'context': context, 'autoDownload': opts.autoDownload});
 
     })().catch((e) => logger.error(e));
-  };
+  }
 
   /**
    * focusイベントのハンドラ
    */
-  AnkSite.prototype.onFocusHandler = function () {
+  onFocusHandler () {
     if (document.readyState !== "complete") {
       return;
     }
     this.forceDisplayAndMarkDownloaded();
-  };
+  }
 
   /**
    * 保存済み表示の強制実行
    */
-  AnkSite.prototype.forceDisplayAndMarkDownloaded = function () {
+  forceDisplayAndMarkDownloaded () {
     if (this.inIllustPage()) {
       this.displayDownloaded({'force': true});
     }
     this.markDownloaded({'force': true});
-  };
+  }
 
   /**
    * 作品ページに「保存済み」メッセージを表示する（DOM操作部）
+   * @param appendTo
+   * @param opts
+   * @private
    */
-  AnkSite.prototype._insertDownloadedDisplay = function (appendTo, opts) {
+  _insertDownloadedDisplay (appendTo, opts) {
 
     let display = appendTo.querySelector('#ank-pixiv-downloaded-display');
     if (!display) {
@@ -661,14 +701,14 @@
       display.setAttribute('class', '');
       display.classList.add.apply(display.classList, cls);
     }
-  };
+  }
 
   /**
    *　作品ページに「保存済み」メッセージを表示する
    * @param opts
-   * @returns {boolean}
+   * @returns {Promise.<boolean>}
    */
-  AnkSite.prototype.displayDownloaded = function (opts) {
+  async displayDownloaded (opts) {
     if (!this.prefs.site.displayDownloaded) {
       return true;
     }
@@ -693,7 +733,7 @@
       return true;
     }
 
-    let illustContext = this.getIllustContext(elm);
+    let illustContext = await this.getIllustContext(elm);
     if (!illustContext) {
       return false;
     }
@@ -719,14 +759,15 @@
     }
 
     return true;
-  };
+  }
 
   /**
    * サムネイルにダウンロード済みマークを付ける（DOM操作部）
    * @param node
    * @param opts
+   * @private
    */
-  AnkSite.prototype._insertDownloadedMark = function (node, opts) {
+  _insertDownloadedMark (node, opts) {
     (async () => {
 
       let boxes = {};
@@ -760,7 +801,8 @@
           if (!boxes[illust_id].find((b) => b.box === box)) {
             boxes[illust_id].push({
               'box': box,
-              'datetime': opts.getLastUpdate && opts.getLastUpdate(box)
+              'datetime': opts.getLastUpdate && opts.getLastUpdate(box),
+              'method': t.m || opts.method
             });
           }
         });
@@ -793,8 +835,11 @@
               if (cls && !e.box.classList.contains(cls)) {
                 e.box.classList.remove('ank-pixiv-downloading', 'ank-pixiv-updated', 'ank-pixiv-downloaded');
                 e.box.classList.add(cls);
-                if (opts.overlay) {
+                if (e.method === 'overlay') {
                   e.box.classList.add('ank-pixiv-mark-overlay');
+                }
+                else if (e.method === 'border') {
+                  e.box.classList.add('ank-pixiv-mark-border');
                 }
                 else {
                   e.box.classList.add('ank-pixiv-mark-background');
@@ -809,7 +854,7 @@
         }
       }
     })();
-  };
+  }
 
   /**
    * サムネイルにダウンロード済みマークを付ける ※半完成品なのでサイト別スクリプト側で補完する必要がある（siteSpecsを与える）
@@ -817,7 +862,7 @@
    * @param siteSpecs
    * @returns {boolean}
    */
-  AnkSite.prototype.markDownloaded = function (opts, siteSpecs) {
+  markDownloaded (opts, siteSpecs) {
     if (!this.prefs.site.markDownloaded) {
       return true;
     }
@@ -835,7 +880,7 @@
 
     this.requestGetSiteChanged()
       .then((siteChanged) => {
-        if (!siteSpecs.node) {
+        if (!opts.node) {
           // ページ単位のチェック（＝node決め打ちでないチェック）の場合は前回チェック時刻と比較を行い、前回以降にサイトの更新が発生していなければ再度のチェックはしない
           if (this.marked > siteChanged) {
             logger.debug('skip mark downloaded');
@@ -852,7 +897,7 @@
           'queries': siteSpecs.queries,
           'getId': siteSpecs.getId,
           'getLastUpdate': siteSpecs.getLastUpdate,
-          'overlay': siteSpecs.overlay,
+          'method': siteSpecs.method,
           'ignorePref': false
         });
 
@@ -863,13 +908,13 @@
     }
 
     return true;
-  };
+  }
 
   /**
    * ビューアを開く
    * @param opts
    */
-  AnkSite.prototype.openViewer = function (opts) {
+  openViewer (opts) {
     if (!this.prefs.site.largeOnMiddle) {
       return;
     }
@@ -905,15 +950,66 @@
   };
 
   /**
-   *
+   * セレクタ定義を上書きする
+   * @param selector_items
+   * @param mod_selector
+   * @returns {{}}
+   */
+  attachSelectorOverride (o, selector_items, mod_selector) {
+
+    const S_OR_ALL = ['s', 'ALL'];
+
+    let dig = (o, selector_items, mod_selector) => {
+      Object.keys(selector_items).forEach((k) => {
+        let item = selector_items[k];
+        if (item === undefined) {
+          throw new Error('invalid selector format');
+        }
+
+        if (item === null) {
+          // パターンA （セレクタの書き換えだけでは対処できないパターン）
+          o[k] = null;
+          return;
+        }
+
+        o[k] = o[k] || {};
+
+        let mods = mod_selector && mod_selector[k] || {};
+
+        let typ = S_OR_ALL.find((p) => item.hasOwnProperty(p));
+        if (typ) {
+          // パターンB
+          if (!Array.isArray(mods[typ]) || typ == 's') {
+            // 's'&'ALL'で値が文字列 or 's'で値が配列
+            o[k][typ] = mods[typ] || item[typ];
+          }
+          else {
+            // 上記以外は mods は使わない
+            o[k][typ] = item[typ];
+          }
+        }
+        else {
+          // パターンC
+          this.attachSelectorOverride(o[k], item, mods);
+        }
+      });
+
+      return o;
+    };
+
+    return dig(o || {}, selector_items, mod_selector || this.prefs.site._mod_selector);
+  }
+
+  /**
+   * セレクタ定義を展開する
    * @param o
    * @param items
    * @param doc
    * @returns {*}
    */
-  AnkSite.prototype.initSelectors = function (o, items, doc, mod_selector) {
+  initSelectors (o, items, doc) {
 
-    mod_selector = mod_selector || this.prefs.site._mod_selector;
+    const S_OR_ALL = ['s', 'ALL'];
 
     Object.keys(items).forEach((k) => {
       let item = items[k];
@@ -929,12 +1025,10 @@
 
       o[k] = o[k] || {};
 
-      let mods = mod_selector && mod_selector[k] || {};
-
-      let typ = ['s', 'ALL'].find((p) => item.hasOwnProperty(p));
+      let typ = S_OR_ALL.find((p) => item.hasOwnProperty(p));
       if (typ) {
         // パターンB
-        let s = mods[typ] || item[typ];
+        let s = item[typ];
         if (typ == 's') {
           if (!Array.isArray(s)) {
             // 決め打ち
@@ -976,11 +1070,11 @@
       }
 
       // パターンC
-      this.initSelectors(o[k], item, doc, mods);
+      this.initSelectors(o[k], item, doc);
     });
 
     return o;
-  };
+  }
 
   /*
    * 以下はサイト別スクリプトの中で実装が必要なもの
@@ -990,40 +1084,39 @@
    * 利用するクエリのまとめ
    * @param doc
    */
-  AnkSite.prototype.getElements = function (doc) {};
+  getElements (doc) {}
 
   /**
    * 画像ダウンロード可能なページに居るか？
    */
-  AnkSite.prototype.inIllustPage = function () {};
+  inIllustPage () {}
 
   /**
    * ダウンロード情報（画像パス）の取得
    * @param elm
    * @returns {Promise.<void>}
    */
-  AnkSite.prototype.getPathContext = async function (elm) {};
+  async getPathContext (elm) {}
 
   /**
    * ダウンロード情報（イラスト情報）の取得
    * @param elm
    */
-  AnkSite.prototype.getIllustContext = function (elm) {};
+  async getIllustContext (elm) {}
 
   /**
    * ダウンロード情報（メンバー情報）の取得
    * @param elm
    */
-  AnkSite.prototype.getMemberContext = function (elm) {};
+  async getMemberContext (elm) {}
 
   /**
    * いいね！する
    */
-  AnkSite.prototype.setNice = function () {};
+  setNice () {}
 
   /**
    * ページに機能をインストールする
    */
-  AnkSite.prototype.installFunctions = function () {};
-
+  installFunctions () {}
 }

@@ -1,49 +1,36 @@
 "use strict";
 
-{
-
+class AnkPixiv extends AnkSite {
   /**
-   *
-   * @constructor
+   * コンストラクタ
    */
-  let AnkPixiv = function () {
-
-    AnkSite.apply(this, arguments);
+  constructor() {
+    super();
 
     this.SITE_ID = 'PXV';
-
-  };
-
-  /**
-   *
-   * @type {AnkSite}
-   */
-  AnkPixiv.prototype = Object.create(AnkSite.prototype, {
-    constructor: {
-      'value': AnkPixiv,
-      'enumerable': false
-    }
-  });
+  }
 
   /**
    * 利用するクエリのまとめ
    * @param doc
    */
-  AnkPixiv.prototype.getElements = function (doc) {
+  getElements (doc) {
 
     const SELECTOR_ITEMS = {
       "illust": {
-        "imgOvr": {"s": ".works_display"},
+        "imgOvr": {"s": ".works_display, ._1tR0cJT"},
         "med": {
-          "img": {"s": ".works_display > ._layout-thumbnail > img"},
-          "bigImg": {"s": ".original-image"}
+          "img": {"s": ".works_display > ._layout-thumbnail > img, ._1tR0cJT ._2r_DywD"},
+          "bigImg": {"s": ".original-image, ._1tR0cJT ._1-h8Se6.r_Q2Jin"}
         },
         "mng": {
-          "img": {"s": ".works_display > ._work > ._layout-thumbnail > img"},
-          "largeLink": {"s": ".works_display > a"}
+          "img": {"s": ".works_display > ._work > ._layout-thumbnail > img, ._1tR0cJT ._2r_DywD"},
+          "largeLink": {"s": ".works_display > a, ._1tR0cJT ._1-h8Se6"},
+          "pages": {"s": "._2uvBc97"}
         },
         "ugo": {
-          "img": {"s": ".works_display > ._ugoku-illust-player-container canvas"}
+          "img": {"s": ".works_display > ._ugoku-illust-player-container canvas"},
+          "pause": {"s": ".kbpwWEq"}
         }
       },
       "mngIdx": {
@@ -55,59 +42,66 @@
       },
       "info": {
         "illust": {
-          "datetime": {"s": ".work-info .meta > li"},
+          "datetime": {"s": ".work-info .meta > li, ._3VLfD7p"},
           "size": {"s": ".work-info .meta > li+li"},
           "tools": {"s": ".work-info .tools"},
-          "title": {"s": ".work-info .title"},
-          "R18": {"s": ".work-info .r-18, .work-info .r-18g"},
-          "caption": {"s": ".work-info .caption"},
-          "nice": {"s": ".work-info .js-nice-button"},
+          "seriesTitle": {"s": "._1XvRWok"},
+          "title": {"s": ".work-info .title, .TTmQ_bQ"},
+          "R18": {"s": '.work-info .r-18, .work-info .r-18g, ._2wuGX9T > a[href*="R-18"]'},
+          "caption": {"s": ".work-info .caption, ._2awgH_j .EG8MDwA p"},
+          "nice": {"s": ".work-info .js-nice-button, .Ki5EGTG"},
           "update": {"s": ".bookmark_modal_thumbnail"},
 
-          "tags": {"ALL": ".work-tags .tags > .tag > .text"}
+          "tags": {"ALL": ".work-tags .tags > .tag > .text, ._1tTPwGC"}
         },
         "member": {
-          "memberLink": {"s": ".profile .user-name"},
-          "feedLink": {"s": ".tab-feed"}
+          "memberLink": {"s": ".profile .user-name, .JdrBYtD ._3RqJTSD"},
+          "feedLink": {"s": '.column-header .tabs a[href^="/stacc/"]'}
         }
       },
       "misc": {
-        "openCantion": {"s": ".ui-expander-container > .ui-expander-target > .expand"},
-        "downloadedDisplayParent": {"s": ".score"},
+        "content": {"s": "._290uSJE"},
+        "openCantion": {"s": ".ui-expander-container > .ui-expander-target > .expand, ._1MskjZd"},
+        "downloadedDisplayParent": {"s": ".score, ._3VLfD7p"},
         "recommendList": {"s": "#illust-recommend ._image-items"},
         "feedList": {"s": ["#stacc_timeline", "#stacc_center_timeline"]},
         "rankingList": {"s": ".ranking-items"},
         "discovery": {"s": "#js-mount-point-discovery"},
+        "allContents": {"s": '._3kixzeH div[role="rowgroup"]'}, // 'thumbnailAll': '_3kixzeH'
+        "recommendContents": {"s": "._3NOStiW > aside:last-child"},
         "downloadedFilenameArea": {"s": ".ank-pixiv-downloaded-filename-text"},
-        "nextLink": {"s": ".before > a"},
-        "prevLink": {"s": ".after > a'"}
+        "nextLink": {"s": ".before > a, ._382QOVK._s3YizR"}, // 'link': '_382QOVK', 'next': '_s3YizR'
+        "prevLink": {"s": ".after > a, ._382QOVK._22qFJA0"}   // 'link': '_382QOVK', 'prev': '_22qFJA0'
       }
     };
 
-    let gElms = this.initSelectors({'doc': doc}, SELECTOR_ITEMS, doc);
+    let selectors = this.attachSelectorOverride({}, SELECTOR_ITEMS);
+
+    let gElms = this.initSelectors({'doc': doc}, selectors, doc);
 
     return gElms;
-  };
+  }
 
   /**
    *
    * @param doc
    * @returns {boolean}
    */
-  AnkPixiv.prototype.inIllustPage = function (doc) {
+  inIllustPage (doc) {
     doc = doc || document;
     return !!this.getIllustId(doc.location.href);
-  };
+  }
 
   /**
    * ダウンロード情報（画像パス）の取得
    * @param elm
    * @returns {Promise}
    */
-  AnkPixiv.prototype.getPathContext = async function (elm) {
+  async getPathContext (elm) {
     let getMedPath = async () => {
       return {
-        'original': [{'src': elm.illust.med.bigImg.getAttribute('data-src'), 'referrer': elm.doc.location.href}]
+        'thumbnail': [{'src': elm.illust.med.img.src, 'referrer': elm.doc.location.href}],
+        'original': [{'src': elm.illust.med.bigImg.getAttribute('data-src') || elm.illust.med.bigImg.getAttribute('href'), 'referrer': elm.doc.location.href}]
       };
     };
 
@@ -197,13 +191,6 @@
 
           thumbnail.push({'src': v.getAttribute('data-src'), 'referrer': referrer});
         });
-
-        if (!this.prefs.viewOriginalSize) {
-          // オリジナルサイズの画像は利用しない
-          return {
-            'thumbnail': thumbnail
-          };
-        }
 
         // オリジナル画像
         const RE_BIG = /(_p\d+)\./;
@@ -344,8 +331,126 @@
       return AnkUtils.executeSiteScript(id, name, script);
     };
 
+    let getMangaPath = async () => {
+      try {
+        let loc = elm.doc.location.href;
+        let illustId = this.getIllustId(loc);
+
+        let illust_resp = await remote.get({
+          'url': 'https://www.pixiv.net/ajax/illust/'+illustId,
+          'responseType': 'json',
+          'timeout': this.prefs.xhrTimeout
+        });
+
+        let pages_resp = await remote.get({
+          'url': 'https://www.pixiv.net/ajax/illust/'+illustId+'/pages',
+          'responseType': 'json',
+          'timeout': this.prefs.xhrTimeout
+        });
+
+        let illust_json = illust_resp.json.body;
+        let pages_json = pages_resp.json.body;
+
+        let thumbnail = pages_json.map((e) => { return {'src': e.urls.regular, 'referrer': loc}});
+        let original = pages_json.map((e) => { return {'src': e.urls.original, 'referrer': loc}});
+
+        if (illust_json.illustType != 1) {
+          let sp_book_style = illust_json.contestBanners && parseInt(illust_json.contestBanners.illust_book_style, 10);
+          if (sp_book_style == 1 || sp_book_style == 2) {
+            // 特殊な値を返してくるタイプのブックスタイルマンガ (ex. 46271807 ～ 事務局の作品でしか見かけないが？)
+            illust_json.illustType = 1;
+            illust_json.restrict = sp_book_style == 1 && 2 || 1;
+          }
+          else if (illust_json.pageCount <= 1) {
+            // マンガじゃないかも
+            logger.error('not manga: illustType =', illust_json.illustType);
+            return Promise.reject();
+          }
+        }
+
+        if (!illust_json.restrict) {
+          // イラストマンガ
+          return {
+            'original': original.length == 1 ? original[0] : original,
+            'thumbnail': thumbnail.length == 1 ? thumbnail[0] : thumbnail
+          };
+        }
+        else {
+          // ブックスタイルマンガ - ブックスタイルマンガは作品数が少ないので考慮漏れがあるかもしれない
+
+          let swapLR = (a, i) => {
+            let tmp = a[i-1];
+            a[i-1] = a[i];
+            a[i] = tmp;
+          };
+
+          // 見開き方向の判定
+          let left2right = illust_json.restrict == 1;
+
+          // 見開きを考慮したページ数のカウントと画像の並べ替え
+          for (let i=0; i<thumbnail.length; i++) {
+            let p = i + 1;
+            let odd = p % 2;
+            thumbnail[i].facingNo = original[i].facingNo = (p - odd) / 2 + 1;
+
+            // 見開きの向きに合わせて画像の順番を入れ替える
+            if (i > 0 && (left2right && odd)) {
+              swapLR(thumbnail, i);
+              swapLR(original, i);
+            }
+          }
+
+          return {
+            'original': original,
+            'thumbnail': thumbnail
+          };
+        }
+      }
+      catch (e) {
+        logger.error(e);
+      }
+    };
+
+    let getUgoiraPath = async () => {
+      try {
+        let f = (s, u, r) => {
+          return [{
+            'src': s,
+            'frames': u.map((o) => {return {'f':o.file, 'd':o.delay}}),
+            'referrer': r
+          }];
+        };
+
+        let loc = elm.doc.location.href;
+        let illustId = this.getIllustId(loc);
+
+        let resp = await remote.get({
+          'url': 'https://www.pixiv.net/ajax/illust/'+illustId+'/ugoira_meta',
+          'responseType': 'json',
+          'timeout': this.prefs.xhrTimeout
+        });
+
+        return {
+          'thumbnail': f(resp.json.body.src, resp.json.body.frames, loc),
+          'original': f(resp.json.body.originalSrc, resp.json.body.frames, loc)
+        };
+      }
+      catch (e) {
+        logger.error(e);
+      }
+    };
+
     //
 
+    // 新デザイン
+    if (elm.illust.mng.pages) {
+      return getMangaPath();
+    }
+    if (elm.illust.ugo.pause) {
+      return getUgoiraPath();
+    }
+
+    // 旧デザイン
     if (elm.illust.med.img) {
       return getMedPath();
     }
@@ -355,21 +460,36 @@
     if (elm.illust.ugo.img) {
       return getUgoPath();
     }
-  };
+  }
 
   /**
    * ダウンロード情報（イラスト情報）の取得
    * @param elm
-   * @returns {{url: string, id, title, posted: (boolean|Number|*), postedYMD: (boolean|*), size: {width, height}, tags: *, tools: *, caption: *, R18: boolean}}
+   * @returns {Promise.<{url: string, id: *, title: (SELECTOR_ITEMS.info.illust.title|{s}|*|*|string|XML|void|string), posted: (boolean|*|Number), postedYMD: (boolean|string|*), size: {width, height}, tags: *, tools: (SELECTOR_ITEMS.info.illust.tools|{s}|*|string|XML|void|string), caption: (SELECTOR_ITEMS.info.illust.caption|{s}|*|*|string|XML|void|string), R18: boolean}>}
    */
-  AnkPixiv.prototype.getIllustContext = function (elm) {
+  async getIllustContext (elm) {
     try {
       let posted = this.getPosted(() => AnkUtils.decodeTextToDateData(elm.info.illust.datetime.textContent));
+
+      let tags = Array.prototype.map.call(elm.info.illust.tags, (e) => {
+        let tag = AnkUtils.trim(e.textContent);
+        let eTrans = e.querySelector('.illust-tag-translation');
+        if (eTrans) {
+          let trans = AnkUtils.trim(eTrans.textContent);
+          if (trans.length > 0) {
+            tag = AnkUtils.trim(tag.slice(0, -trans.length));
+            if (this.prefs.saveTagsWithTranslation) {
+              tag += '('+trans+')';
+            }
+          }
+        }
+        return tag;
+      });
 
       let info = {
         'url': elm.doc.location.href,
         'id': this.getIllustId(elm.doc.location.href),
-        'title': AnkUtils.trim(elm.info.illust.title.textContent),
+        'title': elm.info.illust.title && AnkUtils.trim(elm.info.illust.title.textContent) || '',
         'posted': !posted.fault && posted.timestamp,
         'postedYMD': !posted.fault && posted.ymd,
         'size': ((sz) => {
@@ -380,11 +500,11 @@
               'height': m[2]
             };
           }
-          return sz;
-        })(elm.info.illust.size.textContent),
-        'tags': Array.prototype.map.call(elm.info.illust.tags, (e) => AnkUtils.trim(e.textContent)),
-        'tools': elm.info.illust.tools && AnkUtils.trim(elm.info.illust.tools.textContent),
-        'caption': elm.info.illust.caption && AnkUtils.trim(elm.info.illust.caption.textContent),
+          return sz || '';
+        })(elm.info.illust.size && elm.info.illust.size.textContent),
+        'tags': tags,
+        'tools': elm.info.illust.tools && AnkUtils.trim(elm.info.illust.tools.textContent) || '',
+        'caption': elm.info.illust.caption && AnkUtils.trim(AnkUtils.getTextContent(elm.info.illust.caption)) || '',
         'R18': !!elm.info.illust.R18
       };
 
@@ -400,23 +520,61 @@
         }
       })(elm.info.illust.update);
 
+      ((e) => {
+        let m = e && /\/(\d+)$/.exec(e.href);
+        if (m) {
+          info.seriesId = m[1];
+          info.seriesTitle = AnkUtils.trim(elm.info.illust.seriesTitle.textContent);
+        }
+      })(elm.info.illust.seriesTitle);
+
       return info;
     }
     catch (e) {
       logger.error(e);
     }
-  };
+  }
 
   /**
    * ダウンロード情報（メンバー情報）の取得
    * @param elm
-   * @returns {{id: *, pixiv_id: *, name, memoized_name: null}}
+   * @returns {Promise.<{id: *, pixiv_id: (SELECTOR_ITEMS.info.member.feedLink|{s}|*|string), name: (*|string|XML|void), memoized_name: null}>}
    */
-  AnkPixiv.prototype.getMemberContext = function(elm) {
+  async getMemberContext(elm) {
     try {
+      let memberId = /\/member\.php\?id=(.+?)(?:&|$)/.exec(elm.info.member.memberLink.href)[1];
+
+      /* - body.background が存在しないユーザが居るので保留 -
+      let resp = await remote.get({
+        'url': 'https://www.pixiv.net/ajax/user/'+memberId,
+        'responseType': 'json',
+        'timeout': this.prefs.xhrTimeout
+      });
+
       return {
-        'id': /\/member\.php\?id=(.+?)(?:&|$)/.exec(elm.info.member.memberLink.href)[1],
-        'pixiv_id': /\/stacc\/([^?\/]+)/.exec(elm.info.member.feedLink.href)[1],
+        'id': memberId,
+        'pixiv_id': resp.json.body.background.extra.user_account,
+        'name': resp.json.body.name,
+        'memoized_name': null
+      };
+      */
+
+      let pixivId = await (async (feedLink) => {
+        if (!feedLink) {
+          let memDoc = await remote.get({
+            'url': 'https://www.pixiv.net/member.php?id='+memberId,
+            //headers: [{name:'Referer', value:indexPage}],
+            'responseType': 'document',
+            'timeout': this.prefs.xhrTimeout
+          });
+          feedLink = memDoc.document.querySelector('#wrapper a[href*="/stacc/"]');
+        }
+        return /\/stacc\/([^?\/]+)/.exec(feedLink.href)[1];
+      })(elm.info.member.feedLink);
+
+      return {
+        'id': memberId,
+        'pixiv_id': pixivId,
         'name': AnkUtils.trim(elm.info.member.memberLink.textContent),
         'memoized_name': null
       };
@@ -424,28 +582,28 @@
     catch (e) {
       logger.error(e);
     }
-  };
+  }
 
   /**
    * イラストIDの取得
    * @param loc
    * @returns {*}
    */
-  AnkPixiv.prototype.getIllustId = function (loc) {
+  getIllustId (loc) {
     if (/\/member_illust\.php\?/.test(loc) && /(?:&|\?)mode=medium(?:&|$)/.test(loc)) {
       return (/(?:&|\?)illust_id=(\d+)(?:&|$)/.exec(loc) || [])[1];
     }
-  };
+  }
 
   /**
    * 最終更新日時の取得
    * @param loc
    * @returns {Array|{index: number, input: string}|number}
    */
-  AnkPixiv.prototype.getLastUpdate = function (loc) {
+  getLastUpdate (loc) {
     let m = /\/(20\d\d\/\d\d\/\d\d)\/(\d\d\/\d\d)\/\d\d\//.exec(loc);
     return m && new Date(m[1]+' '+m[2].replace(/\//g, ':')).getTime();
-  };
+  }
 
   /**
    * サムネイルにダウンロード済みマークを付ける
@@ -453,54 +611,59 @@
    * @param siteSpecs
    * @returns {*}
    */
-  AnkPixiv.prototype.markDownloaded = function (opts, siteSpecs) {
-
+  markDownloaded (opts, siteSpecs) {
     const MARKING_TARGETS = [
-      { 'q':'.image-item > .work', 'n':1 },               // 作品一覧、ブックマーク
-      { 'q':'.rank-detail a._work', 'n':2 },              // ホーム（ランキング）
-      { 'q':'.ranking-item a._work', 'n':2 },             // ランキング
-      { 'q':'.worksListOthersImg > ul > li > a', 'n':1 }, // プロファイル（ブックマーク、イメージレスポンス）
-      { 'q':'.worksImageresponseImg > a', 'n':2 },        // イラストページ（イメージレスポンス）
-      { 'q':'li > a.response-in-work', 'n':1 },           // イラストページ（イメージレスポンス）
-      { 'q':'.search_a2_result > ul > li > a', 'n':1 },   // イメージレスポンス
-      { 'q':'.stacc_ref_illust_img > a', 'n':3 },         // フィード（お気に入りに追加したイラスト）
-      { 'q':'.stacc_ref_user_illust_img > a', 'n':1 },    // フィード（お気に入りに追加したユーザ内のイラスト）
-      { 'q':'.hotimage > a.work', 'n':1 },                // タグページ（週間ベスト）
-      { 'q':'.image-item > a:nth-child(1)', 'n':1 },      // タグページ（全期間＆新着）
-      { 'q':'figure > div > a', 'n':2 },                 // ディスカバリー、タグページ
-      { 'q':'.sibling-items > .after > a', 'n':1 },       // 前の作品
-      { 'q':'.sibling-items > .before > a', 'n':1 }       // 次の作品
+      {'q': '.image-item > .work', 'n': 1},               // 作品一覧、ブックマーク
+      {'q': '.rank-detail a._work', 'n': 2},              // ホーム（ランキング）
+      {'q': '.ranking-item a._work', 'n': 2},             // ランキング
+      {'q': '.worksListOthersImg > ul > li > a', 'n': 1}, // プロファイル（ブックマーク、イメージレスポンス）
+      {'q': '.worksImageresponseImg > a', 'n': 2},        // イラストページ（イメージレスポンス）
+      {'q': 'li > a.response-in-work', 'n': 1},           // イラストページ（イメージレスポンス）
+      {'q': '.search_a2_result > ul > li > a', 'n': 1},   // イメージレスポンス
+      {'q': '.stacc_ref_illust_img > a', 'n': 3},         // フィード（お気に入りに追加したイラスト）
+      {'q': '.stacc_ref_user_illust_img > a', 'n': 1},    // フィード（お気に入りに追加したユーザ内のイラスト）
+      {'q': '.hotimage > a.work', 'n': 1},                // タグページ（週間ベスト）
+      {'q': '.image-item > a:nth-child(1)', 'n': 1},      // タグページ（全期間＆新着）
+      {'q': 'figure > div > a', 'n': 2},                  // ディスカバリー、タグページ
+      {'q': '.sibling-items > .after > a', 'n': 1},       // 前の作品
+      {'q': '.sibling-items > .before > a', 'n': 1},      // 次の作品
+      // 以下新UI対応
+      {'q': '.aw29wyY .kbZjQ32', 'n': -1, 'c': 'P1uthkK', 'm': 'border'},     // 関連作品
+      {'q': '._3kixzeH ._382QOVK', 'n': -1, 'c': '_30HYOf4', 'm': 'border'},   // サムネイルリスト
+      {'q': '._2qiYXlt ._382QOVK', 'n': -1, 'c': '_30HYOf4', 'm': 'border'}    // 前の作品、次の作品
     ];
 
-    return AnkSite.prototype.markDownloaded.call(this, opts, {
-      'queries': MARKING_TARGETS,
-      'getId': (href) => {
-        return this.getIllustId(href);
-      },
-      'getLastUpdate': (e) => {
-        let g = e.querySelector('img');
-        return g && this.getLastUpdate(g.src);
-      },
-      'overlay': false
-    });
-  };
+    return super.markDownloaded(opts,
+      {
+        'queries': MARKING_TARGETS,
+        'getId': (href) => {
+          return this.getIllustId(href);
+        },
+        'getLastUpdate': (e) => {
+          let g = e.querySelector('img');
+          let s = g && g.src || e.getAttribute('style');
+          return s && this.getLastUpdate(s);
+        },
+        'method': undefined
+      });
+  }
 
   /**
    * いいね！する
    */
-  AnkPixiv.prototype.setNice = function () {
+  setNice () {
     if (this.elements.info.illust.nice.classList.contains('rated')) {
       logger.info('already rated');
       return;
     }
 
     this.elements.info.illust.nice.click();
-  };
+  }
 
   /**
    * 機能のインストール（イラストページ用）
    */
-  AnkPixiv.prototype.installIllustPageFunction = function (RETRY_VALUE) {
+  installIllustPageFunction (RETRY_VALUE) {
     // 中画像クリック関連
     let middleClickEventFunc = () => {
       // imgOvrの方になった場合は、medImgより広い領域がクリック可能となるが、ページ側の jQuery.on('click')を無効化できないため止む無し
@@ -596,7 +759,7 @@
       }
 
       setTimeout(() => {
-        if (caption.style.display === 'block') {
+        if (getComputedStyle(caption).getPropertyValue('display').indexOf('block') != -1) {
           caption.click();
         }
       }, this.prefs.openCaptionDelay);
@@ -615,13 +778,13 @@
         return;
       }
 
-      let rated = nice.classList.contains('rated');
+      let rated = nice.classList.contains('rated') || nice.classList.contains('_2iDv0r8');
       if (rated) {
         return true;
       }
 
       nice.addEventListener('click', () => {
-        let rated = nice.classList.contains('rated');
+        let rated = nice.classList.contains('rated') || nice.classList.contains('_2iDv0r8');
         if (rated) {
           return;
         }
@@ -632,6 +795,66 @@
       return true;
     };
 
+    // ajaxによるコンテンツの入れ替えを検出する
+    let detectContentChange = () => {
+      if (this.elements.doc.readyState !== "complete") {
+        return false;   // リトライしてほしい
+      }
+
+      let content = this.elements.misc.content;
+      if (!content) {
+        return false;   // リトライしてほしい
+      }
+
+      // miniBrowseの中身が書き換わるのを検出する
+      let moBrowse = new MutationObserver(() => {
+        logger.debug('content changed.');
+        this.restart();
+        this.forceDisplayAndMarkDownloaded();
+      });
+
+      moBrowse.observe(content, {'childList': true});
+
+      return true;
+    };
+
+    // 作品リストが自動伸長したらダウンロード済みマークを追加する
+    let thumbnailListExpansion = () => {
+      let observe = (elm) => {
+        new MutationObserver((o) => {
+          o.forEach((e) => Array.prototype.forEach.call(e.addedNodes, (n) => this.markDownloaded({'node': n, 'force':true})));
+        }).observe(elm, {'childList': true});
+
+        return true;
+      };
+
+      let alist = this.elements.misc.allContents;
+      if (alist) {
+        return observe(alist);
+      }
+    };
+
+    // ページが自動伸長したらダウンロード済みマークを追加する
+    let recommendExpansion = () => {
+      let observe = (elm) => {
+        new MutationObserver((o) => {
+          o.forEach((e) => Array.prototype.forEach.call(e.addedNodes, (n) => {
+            if (n.classList.contains('_2UWAFbb')) {
+              this.markDownloaded({'node': n, 'force':true});
+            }
+          }));
+        }).observe(elm, {'childList': true, 'subtree': true});
+
+        return true;
+      };
+
+      let alist = this.elements.misc.recommendContents;
+      if (alist) {
+        return observe(alist);
+      }
+
+    };
+
     //
 
     Promise.all([
@@ -639,15 +862,18 @@
       AnkUtils.delayFunctionInstaller({'func': delayDisplaying, 'retry': RETRY_VALUE, 'label': 'delayDisplaying'}),
       AnkUtils.delayFunctionInstaller({'func': delayMarking, 'retry': RETRY_VALUE, 'label': 'delayMarking'}),
       AnkUtils.delayFunctionInstaller({'func': openCaption, 'retry': RETRY_VALUE, 'label': 'openCaption'}),
-      AnkUtils.delayFunctionInstaller({'func': niceEventFunc, 'retry': RETRY_VALUE, 'label': 'niceEventFunc'})
+      AnkUtils.delayFunctionInstaller({'func': niceEventFunc, 'retry': RETRY_VALUE, 'label': 'niceEventFunc'}),
+      AnkUtils.delayFunctionInstaller({'func': detectContentChange, 'retry': RETRY_VALUE, 'label': 'detectContentChange'}),
+      AnkUtils.delayFunctionInstaller({'func': thumbnailListExpansion, 'retry': RETRY_VALUE, 'label': 'thumbnailListExpansion'}),
+      AnkUtils.delayFunctionInstaller({'func': recommendExpansion, 'retry': RETRY_VALUE, 'label': 'recommendExpansion'})
     ])
       .catch((e) => logger.warn(e));
-  };
+  }
 
   /**
    * 機能のインストール（リストページ用）
    */
-  AnkPixiv.prototype.installListPageFunction = function (RETRY_VALUE) {
+  installListPageFunction (RETRY_VALUE) {
 
     // サムネイルにダウンロード済みマークを表示する
     let delayMarking = () => {
@@ -695,25 +921,25 @@
       AnkUtils.delayFunctionInstaller({'func': autoPagerize, 'retry': RETRY_VALUE, 'label': 'autoPagerize'})
     ])
       .catch((e) => logger.warn(e));
-  };
+  }
 
   /**
    * 機能のインストールのまとめ
    */
-  AnkPixiv.prototype.installFunctions = function () {
+  installFunctions () {
     if (this.inIllustPage()) {
       this.installIllustPageFunction(this.FUNC_INST_RETRY_VALUE);
       return;
     }
 
     this.installListPageFunction(this.FUNC_INST_RETRY_VALUE);
-  };
-
-  // 開始
-
-  new AnkPixiv().start()
-    .catch((e) => {
-      console.error(e);
-    });
+  }
 
 }
+
+// 開始
+
+new AnkPixiv().start()
+  .catch((e) => {
+    console.error(e);
+  });

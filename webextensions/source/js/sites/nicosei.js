@@ -1,35 +1,20 @@
 "use strict";
 
-{
-
+class AnkNicosei extends AnkSite {
   /**
-   *
-   * @constructor
+   * コンストラクタ
    */
-  let AnkNicosei = function () {
-
-    AnkSite.apply(this, arguments);
+  constructor () {
+    super();
 
     this.SITE_ID = 'NCS';
-
-  };
-
-  /**
-   *
-   * @type {AnkSite}
-   */
-  AnkNicosei.prototype = Object.create(AnkSite.prototype, {
-    constructor: {
-      'value': AnkNicosei,
-      'enumerable': false
-    }
-  });
+  }
 
   /**
    * 利用するクエリのまとめ
    * @param doc
    */
-  AnkNicosei.prototype.getElements = function (doc) {
+  getElements (doc) {
 
     const SELECTOR_ITEMS = {
       "illust": {
@@ -49,7 +34,8 @@
           "tags": {"ALL": "#content #detail .illust_tag.static .tag .text"}
         },
         "member": {
-          "memberLink": {"s": "#content #detail .user_link > a"}
+          "memberLink": {"s": "#content #detail .user_link > a"},
+          "memberName": {"s": "#content #detail .user_name strong"},
         }
       },
       "misc": {
@@ -58,27 +44,29 @@
       }
     };
 
-    let gElms = this.initSelectors({'doc': doc}, SELECTOR_ITEMS, doc);
+    let selectors = this.attachSelectorOverride({}, SELECTOR_ITEMS);
+
+    let gElms = this.initSelectors({'doc': doc}, selectors, doc);
 
     return gElms;
-  };
+  }
 
   /**
    *
    * @param doc
    * @returns {boolean}
    */
-  AnkNicosei.prototype.inIllustPage = function (doc) {
+  inIllustPage (doc) {
     doc = doc || document;
     return !!this.getIllustId(doc.location.href);
-  };
+  }
 
   /**
    * ダウンロード情報（画像パス）の取得
    * @param elm
    * @returns {Promise}
    */
-  AnkNicosei.prototype.getPathContext = async function (elm) {
+  async getPathContext (elm) {
     let getMedPath = async () => {
       let largePage = this.elements.illust.med.imgLink.href;
       logger.info('ORIGINAL IMAGE PAGE:', largePage);
@@ -90,8 +78,10 @@
 
       let img = resp.document.querySelector('.illust_view_big');
       if (img) {
+        let m = [{'src': [new URL(resp.responseURL).origin, img.getAttribute('data-src')].join('')}];
         return {
-          'original': [{'src': [new URL(resp.responseURL).origin, img.getAttribute('data-src')].join('')}]
+          'thumbnail': m,
+          'original': m
         };
       }
     };
@@ -99,14 +89,14 @@
     if (elm.illust.med.imgLink) {
       return getMedPath();
     }
-  };
+  }
 
   /**
    * ダウンロード情報（イラスト情報）の取得
    * @param elm
-   * @returns {{url: string, id, title, posted: (boolean|Number|*), postedYMD: (boolean|*), size: {width, height}, tags: *, tools: *, caption: *, R18: boolean}}
+   * @returns {Promise.<{url: string, id: *, title: (*|string|XML|void), posted: (boolean|*|Number), postedYMD: (boolean|string|*), tags: *, caption: (SELECTOR_ITEMS.info.illust.caption|{s}|*|*|string|XML|void), R18: boolean}>}
    */
-  AnkNicosei.prototype.getIllustContext = function (elm) {
+  async getIllustContext (elm) {
     try {
       let posted = this.getPosted(() => AnkUtils.decodeTextToDateData(elm.info.illust.datetime.textContent));
 
@@ -126,18 +116,18 @@
     catch (e) {
       logger.error(e);
     }
-  };
+  }
 
   /**
    * ダウンロード情報（メンバー情報）の取得
    * @param elm
-   * @returns {{id: *, pixiv_id: *, name, memoized_name: null}}
+   * @returns {Promise.<{id: *, name: (*|string|XML|void), pixiv_id: null, memoized_name: null}>}
    */
-  AnkNicosei.prototype.getMemberContext = function(elm) {
+  async getMemberContext(elm) {
     try {
       return {
         'id': /\/user\/illust\/(.+?)(?:$|\?)/.exec(elm.info.member.memberLink.href)[1],
-        'name': AnkUtils.trim(elm.info.member.memberLink.textContent),
+        'name': AnkUtils.trim(elm.info.member.memberName.textContent),
         'pixiv_id': null,
         'memoized_name': null
       };
@@ -145,16 +135,16 @@
     catch (e) {
       logger.error(e);
     }
-  };
+  }
 
   /**
    * イラストIDの取得
    * @param loc
    * @returns {*}
    */
-  AnkNicosei.prototype.getIllustId = function (loc) {
+  getIllustId (loc) {
     return (/^https?:\/\/seiga\.nicovideo\.jp\/seiga\/(im\d+)/.exec(loc) || [])[1];
-  };
+  }
 
   /**
    * サムネイルにダウンロード済みマークを付ける
@@ -162,7 +152,7 @@
    * @param siteSpecs
    * @returns {*}
    */
-  AnkNicosei.prototype.markDownloaded = function (opts, siteSpecs) {
+  markDownloaded (opts, siteSpecs) {
 
     const MARKING_TARGETS = [
       { 'q':'.list_item > a', 'n':0 },                         // ○○さんのイラスト
@@ -172,31 +162,32 @@
       { 'q':'.center_img > a', 'n':1 }                         // 検索結果・春画ページ（他のイラスト・関連イラストなど）
     ];
 
-    return AnkSite.prototype.markDownloaded.call(this, opts, {
-      'queries': MARKING_TARGETS,
-      'getId': (href) => {
-        return this.getIllustId(href);
-      },
-      'getLastUpdate': undefined,
-      'overlay': false
-    });
-  };
+    return super.markDownloaded(opts,
+      {
+        'queries': MARKING_TARGETS,
+        'getId': (href) => {
+          return this.getIllustId(href);
+        },
+        'getLastUpdate': undefined,
+        'method': undefined
+      });
+  }
 
   /**
    * クリップする
    */
-  AnkNicosei.prototype.setNice = function () {
+  setNice () {
     if (!this.elements.info.illust.clip) {
       return;
     }
 
     this.elements.info.illust.clip.click();
-  };
+  }
 
   /**
    * 機能のインストール（イラストページ用）
    */
-  AnkNicosei.prototype.installIllustPageFunction = function (RETRY_VALUE) {
+  installIllustPageFunction (RETRY_VALUE) {
     // 中画像クリック関連
     let middleClickEventFunc = () => {
       let addMiddleClickEventListener = (imgOvr) => {
@@ -290,12 +281,12 @@
       AnkUtils.delayFunctionInstaller({'func': niceEventFunc, 'retry': RETRY_VALUE, 'label': 'niceEventFunc'})
     ])
       .catch((e) => logger.warn(e));
-  };
+  }
 
   /**
    * 機能のインストール（リストページ用）
    */
-  AnkNicosei.prototype.installListPageFunction = function (RETRY_VALUE) {
+  installListPageFunction (RETRY_VALUE) {
 
     // サムネイルにダウンロード済みマークを表示する
     let delayMarking = () => {
@@ -310,25 +301,25 @@
       AnkUtils.delayFunctionInstaller({'func': delayMarking, 'retry': RETRY_VALUE, 'label': 'delayMarking'})
     ])
       .catch((e) => logger.error(e));
-  };
+  }
 
   /**
    * 機能のインストールのまとめ
    */
-  AnkNicosei.prototype.installFunctions = function () {
+  installFunctions () {
     if (this.inIllustPage()) {
       this.installIllustPageFunction(this.FUNC_INST_RETRY_VALUE);
       return;
     }
 
     this.installListPageFunction(this.FUNC_INST_RETRY_VALUE);
-  };
-
-  // 開始
-
-  new AnkNicosei().start()
-    .catch((e) => {
-      console.error(e);
-    });
+  }
 
 }
+
+// 開始
+
+new AnkNicosei().start()
+  .catch((e) => {
+    console.error(e);
+  });

@@ -1,36 +1,23 @@
 "use strict";
 
-{
-
+class AnkTweetdeck extends AnkSite {
   /**
-   *
-   * @constructor
+   * コンストラクタ
    */
-  let AnkTweetdeck = function () {
-
-    AnkSite.apply(this, arguments);
+  constructor () {
+    super();
 
     this.SITE_ID = 'TDK';
     this.ALT_SITE_ID = 'TWT';
 
-  };
-
-  /**
-   *
-   * @type {AnkSite}
-   */
-  AnkTweetdeck.prototype = Object.create(AnkSite.prototype, {
-    constructor: {
-      'value': AnkTweetdeck,
-      'enumerable': false
-    }
-  });
+    this.USE_CONTEXT_CACHE = false;
+  }
 
   /**
    * 利用するクエリのまとめ
    * @param doc
    */
-  AnkTweetdeck.prototype.getElements = function (doc) {
+  getElements (doc) {
 
     const SELECTOR_ITEMS = {
       "illust": {
@@ -53,61 +40,84 @@
       }
     };
 
-    let gElms = this.initSelectors({'doc': doc}, SELECTOR_ITEMS, doc);
+    let selectors = this.attachSelectorOverride({}, SELECTOR_ITEMS);
+
+    let gElms = this.initSelectors({'doc': doc}, selectors, doc);
 
     Object.defineProperty(gElms.illust, 'photos', {
       'get': function () {
+        let photos = [];
         let chirpId = gElms.info.illust.actionsMenu.getAttribute('data-chirp-id');
-        return Array.prototype.filter.call(
-          gElms.doc.querySelector('article[data-key="'+chirpId+'"], .quoted-tweet[data-key="'+chirpId+'"]').querySelectorAll('.js-media-image-link'),
-          (e) => !e.parentNode.classList.contains('is-video')
+        Array.prototype.find.call(
+          gElms.doc.querySelectorAll('article[data-key="'+chirpId+'"], .quoted-tweet[data-key="'+chirpId+'"]'),
+          (e) => {
+            photos = Array.prototype.filter.call(e.querySelectorAll('.js-media-image-link'), (e) => !e.parentNode.classList.contains('is-video'));
+            return !!photos.length;
+          }
         );
+        return photos;
       }
     });
 
     return gElms;
-  };
+  }
 
   /**
    *
    * @returns {boolean}
    */
-  AnkTweetdeck.prototype.inIllustPage = function () {
+  inIllustPage () {
     let modal = this.elements.illust.modal;
     if (modal) {
       return getComputedStyle(modal, '').getPropertyValue('display') === 'block';
     }
-  };
+  }
 
   /**
    * ダウンロード情報（画像パス）の取得
    * @param elm
    * @returns {Promise}
    */
-  AnkTweetdeck.prototype.getPathContext = async function (elm) {
+  async getPathContext (elm) {
     let photos = elm.illust.photos;
-    if (photos.length > 0) {
-      let m = Array.prototype.map.call(photos, (e) => {
-        let src = (/background-image:url\("?(.+?)"?\)/.exec(e.getAttribute('style')) || [])[1];
-        src = src && src.replace(/:small$/, ':large');
-        return {'src': this.prefs.downloadOriginalSize ? src.replace(/(?::large)?$/, ':orig') : src};
-      });
-
-      if (m.length > 0) {
-        return {
-          'original': m
-        };
-      }
+    if (!photos || photos.length == 0) {
+      return;
     }
-  };
+
+    let thumb = Array.prototype.map.call(photos, (e) => {
+      let src = (/background-image:\s*url\("?(.+?)"?\)/.exec(e.getAttribute('style')) || [])[1];
+      if (!src) {
+        let img = e.querySelector('.media-img');
+        if (!img || !img.src) {
+          return;
+        }
+
+        src = img.src;
+      }
+      return {'src': src.replace(/\?.+?(:|$)/, '$1').replace(/:small$/, ':large')};
+    })
+      .filter(e => !!e);
+
+    if (thumb.length < photos.length) {
+      return;
+    }
+
+    let orig = thumb.map((e) => {
+      return {'src': e.src.replace(/(?::large)?$/, ':orig')};
+    });
+
+    return {
+      'thumbnail': thumb,
+      'original': orig
+    };
+  }
 
   /**
    * ダウンロード情報（イラスト情報）の取得
    * @param elm
-   * @returns {{url: string, id, title, posted: (boolean|Number|*), postedYMD: (boolean|*), size: {width, height}, tags: *, tools: *, caption: *, R18: boolean}}
-   * @returns {{url: (string|*), id: string, title: (*|string|XML|void), posted: (boolean|Number|*), postedYMD: (boolean|string|*), tags: Array, caption: (*|string|XML|void), R18: boolean}}
+   * @returns {Promise.<{url: (string|*), id: *, title: (*|string|XML|void), posted: (boolean|*|Number), postedYMD: (boolean|string|*), tags: Array, caption: (*|string|XML|void), R18: boolean}>}
    */
-  AnkTweetdeck.prototype.getIllustContext = function (elm) {
+  async getIllustContext (elm) {
     try {
       let dd = new Date(parseInt(elm.info.illust.datetime.getAttribute('data-time'),10));
       let posted = this.getPosted(() => AnkUtils.getDateData(dd));
@@ -128,14 +138,14 @@
     catch (e) {
       logger.error(e);
     }
-  };
+  }
 
   /**
    * ダウンロード情報（メンバー情報）の取得
    * @param elm
-   * @returns {{id: *, pixiv_id: *, name, memoized_name: null}}
+   * @returns {Promise.<{id: string, name: (*|string|XML|void), pixiv_id: *, memoized_name: null}>}
    */
-  AnkTweetdeck.prototype.getMemberContext = function(elm) {
+  async getMemberContext(elm) {
     try {
       return {
         'id': elm.info.illust.actionsMenu.getAttribute('data-user-id'),
@@ -147,33 +157,32 @@
     catch (e) {
       logger.error(e);
     }
-  };
+  }
 
   /**
    * ダウンロード情報をまとめる
    * @param elm
-   * @param force
    * @returns {Promise.<*>}
    */
-  AnkTweetdeck.prototype.getContext = async function (elm, force) {
+  async getContext (elm) {
     if (!this.inIllustPage()) {
       return;
     }
 
-    return AnkSite.prototype.getContext.call(this, elm, true);
-  };
+    return super.getContext(elm);
+  }
 
   /**
    *
    * @param opts
    * @param siteSpecs
    */
-  AnkTweetdeck.prototype.markDownloaded = function (opts, siteSpecs) {};
+  markDownloaded (opts, siteSpecs) {}
 
   /**
    *
    */
-  AnkTweetdeck.prototype.installFunctions = function () {
+  installFunctions () {
 
     let displayWhenOpened = () => {
       let modal = this.elements.illust.modal;
@@ -194,13 +203,13 @@
       AnkUtils.delayFunctionInstaller({'func': displayWhenOpened, 'retry': this.FUNC_INST_RETRY_VALUE, 'label': 'displayWhenOpened'})
     ])
       .catch((e) => logger.warn(e));
-  };
-
-  // 開始
-
-  new AnkTweetdeck().start()
-    .catch((e) => {
-      console.error(e);
-    });
+  }
 
 }
+
+// 開始
+
+new AnkTweetdeck().start()
+  .catch((e) => {
+    console.error(e);
+  });
